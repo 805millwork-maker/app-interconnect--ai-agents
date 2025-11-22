@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Code2, GitBranch, Network, Sparkles, Zap, Shield } from "lucide-react";
+import { ArrowRight, Code2, GitBranch, Network, Sparkles, Zap, Shield, Lock } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 
@@ -13,6 +13,11 @@ export default function Home() {
       icon: Network,
       title: "App Integration Hub",
       description: "Connect multiple apps in a slot-based system to expand capabilities across your entire ecosystem"
+    },
+    {
+      icon: Lock,
+      title: "IPFS Secret Vault",
+      description: "Secure encrypted storage with Web3Auth, biometric security, and decentralized IPFS backend"
     },
     {
       icon: Sparkles,
@@ -33,11 +38,6 @@ export default function Home() {
       icon: Shield,
       title: "Secure & Scalable",
       description: "Enterprise-grade security with horizontal scaling support for growing communities"
-    },
-    {
-      icon: Code2,
-      title: "Advanced Tech Stack",
-      description: "Built with Next.js 15, TypeScript, WebSockets, and modern AI integration patterns"
     }
   ];
 
@@ -55,6 +55,10 @@ export default function Home() {
           <div className="flex items-center gap-6">
             <Link href="/apps" className="text-sm font-medium hover:text-primary transition-colors">
               Apps
+            </Link>
+            <Link href="/apps/ipfs-vault" className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-1">
+              <Lock className="w-3 h-3" />
+              Vault
             </Link>
             <Link href="/experts" className="text-sm font-medium hover:text-primary transition-colors">
               Experts

@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, ArrowLeft, Power, Link2, Cpu, Database, Code2, Globe, FileCode } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Power, Link2, Cpu, Database, Code2, Globe, FileCode, Play, Loader2, Lock } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { MultiLangApp } from "@/types/app";
 import { useInterAppCommunication } from "@/hooks/useInterAppCommunication";
+import { RuntimeStatusIndicator } from "@/components/RuntimeStatusIndicator";
 import { toast } from "sonner";
 
 type AppSlot = {
@@ -23,7 +24,21 @@ type AppSlot = {
 
 export default function AppsPage() {
   const [slots, setSlots] = useState<AppSlot[]>([
-    { id: "1", app: null },
+    { 
+      id: "1", 
+      app: {
+        id: "ipfs-vault",
+        name: "IPFS Secret Vault",
+        description: "Encrypted secret storage with Web3Auth + biometric security on decentralized IPFS",
+        lang: "js-ts",
+        format: "web",
+        runtime: "node",
+        code: "// Secure vault with AES-256-GCM encryption\n// Double-key: Wallet + Device binding",
+        endpoint: "/apps/ipfs-vault",
+        status: "active",
+        connections: 0,
+      }
+    },
     { id: "2", app: null },
     { id: "3", app: null },
     { id: "4", app: null },
@@ -33,6 +48,8 @@ export default function AppsPage() {
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<string | null>(null);
   const [newApp, setNewApp] = useState({
     name: "",
     description: "",
@@ -66,6 +83,50 @@ export default function AppsPage() {
     { value: "wasm", label: "WebAssembly" },
   ];
 
+  const handleExecuteCode = async (slotId: string) => {
+    const slot = slots.find(s => s.id === slotId);
+    if (!slot?.app) return;
+
+    const { lang, code } = slot.app;
+
+    // Only Python, Rust, and Solidity have runtime services
+    if (!['python', 'rust', 'solidity'].includes(lang)) {
+      toast.error('Runtime execution only available for Python, Rust, and Solidity');
+      return;
+    }
+
+    setIsExecuting(true);
+    setExecutionResult(null);
+
+    try {
+      const response = await fetch(`/api/runtime/${lang}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          action: lang === 'solidity' ? 'compile' : 'execute',
+          entryPoint: 'main',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setExecutionResult(data.output || 'Execution successful');
+        toast.success(`${lang} code executed successfully!`);
+      } else {
+        setExecutionResult(`Error: ${data.error || 'Execution failed'}`);
+        toast.error('Execution failed');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to execute';
+      setExecutionResult(`Error: ${message}`);
+      toast.error('Failed to execute code');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   const handleAddApp = () => {
     if (selectedSlotId && newApp.name) {
       const app: MultiLangApp = {
@@ -85,7 +146,6 @@ export default function AppsPage() {
         slot.id === selectedSlotId ? { ...slot, app } : slot
       ));
 
-      // Broadcast to other apps
       sendMessage('all', { type: 'app-added', slot: app, integrate: true });
       toast.success(`${newApp.name} added successfully!`);
 
@@ -157,6 +217,10 @@ export default function AppsPage() {
     return colors[lang as keyof typeof colors] || 'bg-gray-500/10 text-gray-600';
   };
 
+  const isIPFSVault = (app: MultiLangApp | null) => {
+    return app?.id === "ipfs-vault";
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -175,41 +239,62 @@ export default function AppsPage() {
                 <p className="text-sm text-muted-foreground">Manage apps in JS/TS, Python, Rust, Solidity & more</p>
               </div>
             </div>
-            <Button onClick={handleAddSlot}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Slot
-            </Button>
+            <div className="flex items-center gap-3">
+              <RuntimeStatusIndicator compact />
+              <Button onClick={handleAddSlot}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Slot
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Total Slots</div>
-            <div className="text-3xl font-bold">{slots.length}</div>
-          </Card>
-          <Card className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Active Apps</div>
-            <div className="text-3xl font-bold text-green-600">
-              {slots.filter(s => s.app?.status === "active").length}
-            </div>
-          </Card>
-          <Card className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Empty Slots</div>
-            <div className="text-3xl font-bold text-muted-foreground">
-              {slots.filter(s => !s.app).length}
-            </div>
-          </Card>
-          <Card className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Total Connections</div>
-            <div className="text-3xl font-bold text-blue-600">
-              {slots.reduce((sum, s) => sum + (s.app?.connections || 0), 0)}
-            </div>
-          </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+          {/* Stats */}
+          <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="p-6">
+              <div className="text-sm text-muted-foreground mb-1">Total Slots</div>
+              <div className="text-3xl font-bold">{slots.length}</div>
+            </Card>
+            <Card className="p-6">
+              <div className="text-sm text-muted-foreground mb-1">Active Apps</div>
+              <div className="text-3xl font-bold text-green-600">
+                {slots.filter(s => s.app?.status === "active").length}
+              </div>
+            </Card>
+            <Card className="p-6">
+              <div className="text-sm text-muted-foreground mb-1">Empty Slots</div>
+              <div className="text-3xl font-bold text-muted-foreground">
+                {slots.filter(s => !s.app).length}
+              </div>
+            </Card>
+            <Card className="p-6">
+              <div className="text-sm text-muted-foreground mb-1">Total Connections</div>
+              <div className="text-3xl font-bold text-blue-600">
+                {slots.reduce((sum, s) => sum + (s.app?.connections || 0), 0)}
+              </div>
+            </Card>
+          </div>
+
+          {/* Runtime Status */}
+          <RuntimeStatusIndicator />
         </div>
+
+        {/* Execution Result */}
+        {executionResult && (
+          <Card className="p-4 mb-6 bg-muted">
+            <div className="flex items-start justify-between mb-2">
+              <h3 className="font-semibold text-sm">Execution Result</h3>
+              <Button variant="ghost" size="sm" onClick={() => setExecutionResult(null)}>
+                ×
+              </Button>
+            </div>
+            <pre className="text-sm font-mono whitespace-pre-wrap">{executionResult}</pre>
+          </Card>
+        )}
 
         {/* App Slots Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -221,17 +306,26 @@ export default function AppsPage() {
               transition={{ duration: 0.3, delay: index * 0.05 }}
             >
               {slot.app ? (
-                <Card className="p-6 h-full border-2 hover:shadow-lg transition-all">
+                <Card className={`p-6 h-full border-2 hover:shadow-lg transition-all ${isIPFSVault(slot.app) ? 'border-primary/40 bg-primary/5' : ''}`}>
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getLanguageColor(slot.app.lang)}`}>
-                        {(() => {
-                          const Icon = getLanguageIcon(slot.app.lang);
-                          return <Icon className="w-5 h-5" />;
-                        })()}
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isIPFSVault(slot.app) ? 'bg-primary/20 text-primary' : getLanguageColor(slot.app.lang)}`}>
+                        {isIPFSVault(slot.app) ? (
+                          <Lock className="w-5 h-5" />
+                        ) : (
+                          (() => {
+                            const Icon = getLanguageIcon(slot.app.lang);
+                            return <Icon className="w-5 h-5" />;
+                          })()
+                        )}
                       </div>
                       <div>
-                        <h3 className="font-semibold">{slot.app.name}</h3>
+                        <h3 className="font-semibold flex items-center gap-2">
+                          {slot.app.name}
+                          {isIPFSVault(slot.app) && (
+                            <Badge variant="secondary" className="text-xs">Featured</Badge>
+                          )}
+                        </h3>
                         <div className="flex gap-1 mt-1">
                           <Badge variant={slot.app.status === "active" ? "default" : "secondary"}>
                             {slot.app.status}
@@ -269,19 +363,52 @@ export default function AppsPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => handleToggleStatus(slot.id)}
-                    >
-                      <Power className="w-3 h-3 mr-1" />
-                      {slot.app.status === "active" ? "Deactivate" : "Activate"}
-                    </Button>
+                    {isIPFSVault(slot.app) ? (
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        asChild
+                      >
+                        <Link href={slot.app.endpoint}>
+                          <Lock className="w-3 h-3 mr-1" />
+                          Open Vault
+                        </Link>
+                      </Button>
+                    ) : (
+                      <>
+                        {['python', 'rust', 'solidity'].includes(slot.app.lang) && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="flex-1"
+                            onClick={() => handleExecuteCode(slot.id)}
+                            disabled={isExecuting}
+                          >
+                            {isExecuting ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : (
+                              <Play className="w-3 h-3 mr-1" />
+                            )}
+                            Execute
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={['python', 'rust', 'solidity'].includes(slot.app.lang) ? '' : 'flex-1'}
+                          onClick={() => handleToggleStatus(slot.id)}
+                        >
+                          <Power className="w-3 h-3 mr-1" />
+                          {slot.app.status === "active" ? "Deactivate" : "Activate"}
+                        </Button>
+                      </>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleRemoveApp(slot.id)}
+                      disabled={isIPFSVault(slot.app)}
+                      title={isIPFSVault(slot.app) ? "Featured app cannot be removed" : "Remove app"}
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>
@@ -407,6 +534,11 @@ export default function AppsPage() {
                 rows={6}
                 className="font-mono text-sm"
               />
+              {['python', 'rust', 'solidity'].includes(newApp.lang) && (
+                <p className="text-xs text-muted-foreground">
+                  ✓ This language supports real-time execution on Docker runtime services
+                </p>
+              )}
             </div>
 
             <div className="grid gap-2">
