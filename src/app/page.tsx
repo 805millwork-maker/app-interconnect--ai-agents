@@ -56,6 +56,9 @@ export default function Home() {
             <Link href="/apps" className="text-sm font-medium hover:text-primary transition-colors">
               Apps
             </Link>
+            <Link href="/experts" className="text-sm font-medium hover:text-primary transition-colors">
+              Experts
+            </Link>
             <Link href="/github-actions" className="text-sm font-medium hover:text-primary transition-colors">
               GitHub Actions
             </Link>

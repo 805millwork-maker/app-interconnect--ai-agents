@@ -4,28 +4,21 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Settings, Trash2, Network, ArrowLeft, Power, Link2, Cpu, Database } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Power, Link2, Cpu, Database, Code2, Globe, FileCode } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-
-type App = {
-  id: string;
-  name: string;
-  description: string;
-  type: string;
-  status: "active" | "inactive";
-  connections: number;
-  apiEndpoint?: string;
-};
+import { MultiLangApp } from "@/types/app";
+import { useInterAppCommunication } from "@/hooks/useInterAppCommunication";
+import { toast } from "sonner";
 
 type AppSlot = {
   id: string;
-  app: App | null;
+  app: MultiLangApp | null;
 };
 
 export default function AppsPage() {
@@ -43,37 +36,69 @@ export default function AppsPage() {
   const [newApp, setNewApp] = useState({
     name: "",
     description: "",
-    type: "web-app",
+    lang: "js-ts" as MultiLangApp['lang'],
+    format: "web" as MultiLangApp['format'],
+    runtime: "node" as MultiLangApp['runtime'],
+    code: "",
     apiEndpoint: "",
   });
 
-  const appTypes = [
-    { value: "web-app", label: "Web Application" },
+  const { sendMessage } = useInterAppCommunication('apps', true);
+
+  const appLanguages = [
+    { value: "js-ts", label: "JavaScript/TypeScript", icon: Code2 },
+    { value: "python", label: "Python", icon: FileCode },
+    { value: "rust", label: "Rust", icon: Cpu },
+    { value: "solidity", label: "Solidity", icon: Database },
+    { value: "html-css", label: "HTML/CSS", icon: Globe },
+  ];
+
+  const appFormats = [
+    { value: "web", label: "Web Application" },
     { value: "api", label: "API Service" },
-    { value: "database", label: "Database" },
-    { value: "analytics", label: "Analytics" },
-    { value: "ai-service", label: "AI Service" },
-    { value: "storage", label: "Storage" },
+    { value: "contract", label: "Smart Contract" },
+    { value: "binary", label: "Binary/Native" },
+  ];
+
+  const appRuntimes = [
+    { value: "node", label: "Node.js" },
+    { value: "docker", label: "Docker Container" },
+    { value: "wasm", label: "WebAssembly" },
   ];
 
   const handleAddApp = () => {
     if (selectedSlotId && newApp.name) {
-      const app: App = {
+      const app: MultiLangApp = {
         id: Date.now().toString(),
         name: newApp.name,
         description: newApp.description,
-        type: newApp.type,
+        lang: newApp.lang,
+        format: newApp.format,
+        runtime: newApp.runtime,
+        code: newApp.code || `// Generated ${newApp.lang} code\nconsole.log("Hello from ${newApp.name}");`,
+        endpoint: `/slots/${Date.now()}`,
         status: "active",
         connections: 0,
-        apiEndpoint: newApp.apiEndpoint,
       };
 
       setSlots(slots.map(slot => 
         slot.id === selectedSlotId ? { ...slot, app } : slot
       ));
 
+      // Broadcast to other apps
+      sendMessage('all', { type: 'app-added', slot: app, integrate: true });
+      toast.success(`${newApp.name} added successfully!`);
+
       setIsAddDialogOpen(false);
-      setNewApp({ name: "", description: "", type: "web-app", apiEndpoint: "" });
+      setNewApp({ 
+        name: "", 
+        description: "", 
+        lang: "js-ts", 
+        format: "web", 
+        runtime: "node",
+        code: "",
+        apiEndpoint: "" 
+      });
       setSelectedSlotId(null);
     }
   };
@@ -82,16 +107,19 @@ export default function AppsPage() {
     setSlots(slots.map(slot => 
       slot.id === slotId ? { ...slot, app: null } : slot
     ));
+    toast.success('App removed');
   };
 
   const handleToggleStatus = (slotId: string) => {
     setSlots(slots.map(slot => {
       if (slot.id === slotId && slot.app) {
+        const newStatus = slot.app.status === "active" ? "inactive" : "active";
+        toast.success(`App ${newStatus === "active" ? "activated" : "deactivated"}`);
         return {
           ...slot,
           app: {
             ...slot.app,
-            status: slot.app.status === "active" ? "inactive" : "active"
+            status: newStatus
           }
         };
       }
@@ -105,6 +133,7 @@ export default function AppsPage() {
       app: null,
     };
     setSlots([...slots, newSlot]);
+    toast.success('New slot added');
   };
 
   const openAddDialog = (slotId: string) => {
@@ -112,13 +141,20 @@ export default function AppsPage() {
     setIsAddDialogOpen(true);
   };
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case "api": return Link2;
-      case "database": return Database;
-      case "ai-service": return Cpu;
-      default: return Network;
-    }
+  const getLanguageIcon = (lang: string) => {
+    const langConfig = appLanguages.find(l => l.value === lang);
+    return langConfig?.icon || Code2;
+  };
+
+  const getLanguageColor = (lang: string) => {
+    const colors = {
+      'js-ts': 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+      'python': 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+      'rust': 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
+      'solidity': 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
+      'html-css': 'bg-green-500/10 text-green-600 dark:text-green-400',
+    };
+    return colors[lang as keyof typeof colors] || 'bg-gray-500/10 text-gray-600';
   };
 
   return (
@@ -135,8 +171,8 @@ export default function AppsPage() {
                 </Link>
               </Button>
               <div>
-                <h1 className="text-2xl font-bold">App Marketplace</h1>
-                <p className="text-sm text-muted-foreground">Manage your app integration slots</p>
+                <h1 className="text-2xl font-bold">Multi-Language App Marketplace</h1>
+                <p className="text-sm text-muted-foreground">Manage apps in JS/TS, Python, Rust, Solidity & more</p>
               </div>
             </div>
             <Button onClick={handleAddSlot}>
@@ -188,21 +224,22 @@ export default function AppsPage() {
                 <Card className="p-6 h-full border-2 hover:shadow-lg transition-all">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        slot.app.status === "active" ? "bg-green-500/10" : "bg-gray-500/10"
-                      }`}>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getLanguageColor(slot.app.lang)}`}>
                         {(() => {
-                          const Icon = getTypeIcon(slot.app.type);
-                          return <Icon className={`w-5 h-5 ${
-                            slot.app.status === "active" ? "text-green-600" : "text-gray-600"
-                          }`} />;
+                          const Icon = getLanguageIcon(slot.app.lang);
+                          return <Icon className="w-5 h-5" />;
                         })()}
                       </div>
                       <div>
                         <h3 className="font-semibold">{slot.app.name}</h3>
-                        <Badge variant={slot.app.status === "active" ? "default" : "secondary"} className="mt-1">
-                          {slot.app.status}
-                        </Badge>
+                        <div className="flex gap-1 mt-1">
+                          <Badge variant={slot.app.status === "active" ? "default" : "secondary"}>
+                            {slot.app.status}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {slot.app.lang.toUpperCase()}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -213,16 +250,20 @@ export default function AppsPage() {
                   
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Type:</span>
-                      <span className="font-medium capitalize">{slot.app.type.replace("-", " ")}</span>
+                      <span className="text-muted-foreground">Format:</span>
+                      <span className="font-medium capitalize">{slot.app.format}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Runtime:</span>
+                      <span className="font-medium capitalize">{slot.app.runtime}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Connections:</span>
                       <span className="font-medium">{slot.app.connections}</span>
                     </div>
-                    {slot.app.apiEndpoint && (
-                      <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted rounded">
-                        {slot.app.apiEndpoint}
+                    {slot.app.endpoint && (
+                      <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted rounded font-mono">
+                        {slot.app.endpoint}
                       </div>
                     )}
                   </div>
@@ -256,7 +297,7 @@ export default function AppsPage() {
                     </div>
                     <h3 className="font-semibold mb-2">Empty Slot {slot.id}</h3>
                     <p className="text-sm text-muted-foreground">
-                      Click to add an app to this slot
+                      Click to add a multi-language app
                     </p>
                   </div>
                 </Card>
@@ -268,11 +309,11 @@ export default function AppsPage() {
 
       {/* Add App Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add New App</DialogTitle>
+            <DialogTitle>Add Multi-Language App</DialogTitle>
             <DialogDescription>
-              Configure your app integration. Click save when you're done.
+              Configure your app with language, runtime, and code integration.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -285,24 +326,66 @@ export default function AppsPage() {
                 onChange={(e) => setNewApp({ ...newApp, name: e.target.value })}
               />
             </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="lang">Language</Label>
+                <Select
+                  value={newApp.lang}
+                  onValueChange={(value) => setNewApp({ ...newApp, lang: value as MultiLangApp['lang'] })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appLanguages.map((lang) => (
+                      <SelectItem key={lang.value} value={lang.value}>
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="format">Format</Label>
+                <Select
+                  value={newApp.format}
+                  onValueChange={(value) => setNewApp({ ...newApp, format: value as MultiLangApp['format'] })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appFormats.map((format) => (
+                      <SelectItem key={format.value} value={format.value}>
+                        {format.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="type">App Type</Label>
+              <Label htmlFor="runtime">Runtime</Label>
               <Select
-                value={newApp.type}
-                onValueChange={(value) => setNewApp({ ...newApp, type: value })}
+                value={newApp.runtime}
+                onValueChange={(value) => setNewApp({ ...newApp, runtime: value as MultiLangApp['runtime'] })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select app type" />
+                  <SelectValue placeholder="Select runtime" />
                 </SelectTrigger>
                 <SelectContent>
-                  {appTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                  {appRuntimes.map((runtime) => (
+                    <SelectItem key={runtime.value} value={runtime.value}>
+                      {runtime.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
             <div className="grid gap-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
@@ -313,6 +396,19 @@ export default function AppsPage() {
                 rows={3}
               />
             </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="code">Code (Optional)</Label>
+              <Textarea
+                id="code"
+                placeholder="Paste your code here or leave empty for auto-generation..."
+                value={newApp.code}
+                onChange={(e) => setNewApp({ ...newApp, code: e.target.value })}
+                rows={6}
+                className="font-mono text-sm"
+              />
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="endpoint">API Endpoint (Optional)</Label>
               <Input
